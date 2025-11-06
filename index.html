@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英語和訳 添削システム (AI版)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Interフォントの読み込み */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #f3f4f6; /* 若干の背景色 */
+        }
+        /* ローディングスピナー */
+        .loader {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* 添削結果のスタイル */
+        #feedback-text h3 {
+            font-size: 1.5rem; /* text-2xl (1.25remから変更) */
+            font-weight: 600; /* font-semibold */
+            margin-top: 1.5rem; /* mt-6 */
+            margin-bottom: 0.5rem; /* mb-2 */
+            border-bottom: 2px solid #e5e7eb; /* border-b-2 */
+            padding-bottom: 0.25rem; /* pb-1 */
+        }
+        #feedback-text h4 {
+            font-size: 1.25rem; /* text-xl (1.125remから変更) */
+            font-weight: 600; /* font-semibold */
+            margin-top: 1rem; /* mt-4 */
+        }
+        #feedback-text ul {
+            list-style-type: disc;
+            margin-left: 1.5rem; /* ml-6 */
+            margin-top: 0.5rem; /* mt-2 */
+        }
+        #feedback-text li {
+            margin-bottom: 0.25rem; /* mb-1 */
+        }
+        #feedback-text p {
+            margin-top: 0.5rem; /* mt-2 */
+        }
+        #feedback-text strong {
+            font-weight: 700; /* font-bold */
+            color: #1d4ed8; /* text-blue-800 */
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-3xl bg-white rounded-xl shadow-2xl p-6 md:p-10">
+        
+        <header class="mb-6">
+            <h1 class="text-4xl font-bold text-gray-800 text-center">英語和訳 添削システム</h1>
+            <p class="text-center text-gray-500 mt-2 text-lg">AIがあなたの和訳を添削・評価します。</p>
+        </header>
+
+        <main>
+            <!-- 問題選択 -->
+            <div class="mb-5">
+                <label for="problem-select" class="block text-base font-medium text-gray-700 mb-2">問題を選択してください:</label>
+                <select id="problem-select" class="w-full h-12 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-lg">
+                    <!-- JavaScriptで問題が読み込まれます -->
+                </select>
+            </div>
+
+            <!-- 英語原文 -->
+            <div class="mb-5 p-5 bg-gray-50 rounded-lg border border-gray-200">
+                <h3 class="text-xl font-semibold text-gray-900 mb-2">英語原文</h3>
+                <p id="english-text" class="text-gray-800 leading-loose text-lg"></p>
+            </div>
+
+            <!-- 和訳入力欄 -->
+            <div class="mb-6">
+                <label for="user-translation" class="block text-base font-medium text-gray-700 mb-2">あなたの和訳:</label>
+                <textarea id="user-translation" rows="6" class="w-full p-4 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-lg leading-loose" placeholder="ここに日本語訳を入力してください..."></textarea>
+            </div>
+
+            <!-- 添削ボタン -->
+            <div class="text-center mb-6">
+                <button id="submit-btn" class="w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-150 ease-in-out transform active:scale-95 text-lg">
+                    <span id="btn-text">AIに添削してもらう</span>
+                </button>
+            </div>
+
+            <!-- 結果表示エリア -->
+            <div id="result-area" class="mt-8">
+                <!-- ローディングスピナー -->
+                <div id="loading-spinner" class="flex justify-center items-center h-24 hidden">
+                    <div class="loader w-12 h-12 rounded-full border-4 border-t-4 border-gray-200"></div>
+                    <p class="ml-4 text-gray-600 text-lg">AIが添削中です...</p>
+                </div>
+
+                <!-- 添削フィードバック -->
+                <div id="feedback-container" class="hidden">
+                    <h3 class="text-3xl font-bold text-gray-800 mb-4 border-b-2 pb-2 border-blue-200">AIによる添削フィードバック</h3>
+                    <div id="feedback-text" class="p-5 bg-blue-50 border border-blue-200 rounded-lg text-gray-700 leading-loose text-lg">
+                        <!-- ここにAIの添削結果が表示されます -->
+                    </div>
+                </div>
+
+                <!-- エラーメッセージ -->
+                <div id="error-message" class="hidden p-4 bg-red-100 border border-red-300 text-red-700 rounded-lg">
+                    <!-- エラーメッセージ -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- 1. 問題データ ---
+        // (前回作成した10題)
+        const problems = [
+            {
+                id: 1,
+                theme: "環境問題と持続可能性",
+                english: "Sustainability is not merely about preserving nature for its own sake, but about understanding that human survival and well-being are fundamentally dependent on the intricate ecosystems that we are rapidly altering.",
+                modelTranslation: "持続可能性とは、単に自然それ自体を守るということだけではなく、人類の生存と幸福が、我々が急速に変化させている複雑な生態系に根本的に依存していることを理解することである。"
+            },
+            {
+                id: 2,
+                theme: "テクノロジーの倫理的側面",
+                english: "As artificial intelligence becomes more integrated into our daily lives, we are confronted with profound ethical questions regarding accountability, bias in algorithms, and the very definition of human consciousness.",
+                modelTranslation: "AI（人工_知能）が私たちの日常生活により深く組み込まれるにつれて、私たちは（AIの）説明責任、アルゴリズムにおける偏見、そしてまさに人間の意識の定義そのものに関する、重大な倫理的問題に直面している。"
+            },
+            {
+                id: 3,
+                theme: "科学的思考",
+                english: "Scientific inquiry is a systematic process of challenging existing ideas, not simply accumulating facts. It is through rigorous observation and repeatable experimentation that knowledge progresses, often revealing our previous assumptions to be mistaken.",
+                modelTranslation: "科学的探究とは、単に事実を蓄積することではなく、既存の考え方に異議を唱える体系的なプロセスである。知識が進歩するのは、厳密な観察と再現可能な実験を通してであり、それによってしばしば、私たちの以前の仮定が間違っていたことが明らかにされる。"
+            },
+            {
+                id: 4,
+                theme: "社会構造",
+                english: "The rapid shift towards remote work, accelerated by recent global events, has forced societies to reconsider the fundamental structure of the workplace, the balance between professional and personal life, and the nature of urban development.",
+                modelTranslation: "近年の世界的な出来事によって加速したリモートワークへの急速な移行は、社会に対して、職場の基本的構造、仕事と私生活のバランス、そして都市開発のあり方を再考することを余儀なくさせた。"
+            },
+            {
+                id: 5,
+                theme: "歴史・哲学",
+                english: "To study history is to engage in a dialogue with the past, not merely to memorize dates and events. We seek to understand the motivations and constraints that shaped human actions, thereby gaining perspective on our own time.",
+                modelTranslation: "歴史を学ぶことは、単に日付や出来事を暗記することではなく、過去との対話を行うことである。私たちは、人間の行動を形立った動機や制約を理解しようと努め、それによって現代に対する洞察を得るのである。"
+            },
+            {
+                id: 6,
+                theme: "環境問題と持続可能性",
+                english: "Recognizing the finite nature of Earth's resources requires a fundamental shift in our economic models, moving away from a linear system of 'take, make, dispose' towards a circular economy focused on regeneration and reuse.",
+                modelTranslation: "地球の資源が有限であることを認識することは、私たちの経済モデルに根本的な転換を要求する。それは、「採取、製造、廃棄」という直線的なシステムから離れ、再生と再利用に焦点を当てた循環型経済へと移行することである。"
+            },
+            {
+                id: 7,
+                theme: "テクノロジーの倫理的側面",
+                english: "Seldom do we pause to consider the long-term societal implications of the data we freely provide to online platforms, data which is used to influence our behavior and decisions in ways we may not even perceive.",
+                modelTranslation: "私たちがオンラインプラットフォームに無償で提供しているデータが、自分たちでも感知できないような方法で我々の行動や意思決定に影響を与えるために使われているという、長期的な社会的影響について、私たちが立ち止まって考えることは滅多にない。"
+            },
+            {
+                id: 8,
+                theme: "コミュニケーション論",
+                english: "Effective communication in a globalized world demands more than just linguistic fluency; it necessitates a deep cultural empathy and the willingness to challenge one's own biases and assumptions about others.",
+                modelTranslation: "グローバル化した世界における効果的なコミュニケーションは、単なる言語の流暢さ以上のものを要求する。それは、深い文化的共感と、他者に対する自らの偏見や思い込みに疑問を呈する意欲を必要とする。"
+            },
+            {
+                id: 9,
+                theme: "芸術・文化",
+                english: "Art, in all its forms, possesses the unique power to transcend cultural and linguistic barriers, allowing us to connect with the shared human experiences of joy, sorrow, and aspiration that define our existence.",
+                modelTranslation: "芸術は、そのあらゆる形態において、文化的・言語的障壁を超える固有の力を持っており、私たちの存在を定義する喜び、悲しみ、願望といった人類共通の経験と、私たちを結びつけてくれる。"
+            },
+            {
+                id: 10,
+                theme: "科学的思考・哲学",
+                english: "What truly distinguishes critical thinking is not the amount of information one possesses, but the intellectual discipline to question sources, analyze underlying logic, and remain open to the possibility of being wrong.",
+                modelTranslation: "批判的思考を真に特徴づけるのは、その人が所有する情報の量ではなく、情報源を疑い、根底にある論理を分析し、自らが間違っている可能性を常に受け入れる知的訓練（規律）である。"
+            }
+        ];
+
+        // --- 2. DOM要素の取得 ---
+        const problemSelect = document.getElementById('problem-select');
+        const englishText = document.getElementById('english-text');
+        const userTranslation = document.getElementById('user-translation');
+        const submitBtn = document.getElementById('submit-btn');
+        const btnText = document.getElementById('btn-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const feedbackContainer = document.getElementById('feedback-container');
+        const feedbackText = document.getElementById('feedback-text');
+        const errorMessage = document.getElementById('error-message');
+
+        // --- 3. Google Apps Script (GAS) 関連 ---
+        
+        // ★★★ 重要 ★★★
+        // ここに、GASを「ウェブアプリ」としてデプロイした後に取得できるURLを貼り付けます。
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwXF83K61QsLW9FdKNf7hsrr7ATldvGsBL1uy-iH25azSGME8r-6fDLVcZlZApwPbYbQg/exec"; 
+        
+        // ★★★★★★★★★★
+
+        /**
+         * API呼び出しをリトライ付きで実行する関数
+         */
+        async function fetchWithExponentialBackoff(url, options, maxRetries = 5) {
+            let delay = 1000; // 1秒から開始
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        // サーバーからのエラーレスポンスをテキストとして読み取る
+                        const errorText = await response.text();
+                        console.error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.warn(`Attempt ${i + 1}/${maxRetries} failed: ${error.message}. Retrying in ${delay}ms...`);
+                    if (i === maxRetries - 1) {
+                        throw error; // 最終リトライでも失敗したらエラーを投げる
+                    }
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; // 次のディレイを2倍にする
+                }
+            }
+        }
+
+        /**
+         * GAS（中継サーバー）を呼び出す関数
+         */
+        async function callProxyAPI(original, user, model) {
+            
+            if (GAS_WEB_APP_URL === "YOUR_GAS_WEB_APP_URL_HERE" || !GAS_WEB_APP_URL) {
+                throw new Error("HTMLファイルが正しく設定されていません。管理者に連絡してください。(GAS_WEB_APP_URL is not set)");
+            }
+
+            const payload = {
+                original: original,
+                user: user,
+                model: model
+            };
+
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8', // GASのdoPostで受けるため
+                },
+                body: JSON.stringify(payload),
+                mode: 'cors' // クロスオリジンリクエスト
+            };
+
+            try {
+                // GASのURLにリクエストを送信
+                const result = await fetchWithExponentialBackoff(GAS_WEB_APP_URL, options);
+                
+                if (result.success === true) {
+                    // GASから成功のレスポンス
+                    return result.feedback;
+                } else {
+                    // GASがエラーを返した場合
+                    console.error("GAS Error:", result.error);
+                    throw new Error(`サーバー（GAS）側でエラーが発生しました: ${result.error}`);
+                }
+            } catch (error) {
+                console.error("Fetch Error:", error);
+                // ネットワークエラーや、GAS側での予期せぬエラー（JSONパース失敗など）
+                throw new Error(`中継サーバーとの通信に失敗しました。時間をおいて再度お試しください。(Details: ${error.message})`);
+            }
+        }
+
+
+        // --- 4. イベントハンドラ ---
+
+        /**
+         * ページ読み込み時に問題を選択肢にセット
+         */
+        function initializeProblems() {
+            problems.forEach(problem => {
+                const option = document.createElement('option');
+                option.value = problem.id;
+                option.textContent = `第${problem.id}問 [${problem.theme}]`;
+                problemSelect.appendChild(option);
+            });
+            displayProblem(); // 最初の問題を表示
+        }
+
+        /**
+         * 選択された問題を表示
+         */
+        function displayProblem() {
+            const selectedId = parseInt(problemSelect.value);
+            const selectedProblem = problems.find(p => p.id === selectedId);
+
+            if (selectedProblem) {
+                englishText.textContent = selectedProblem.english;
+                userTranslation.value = ""; // 入力欄をクリア
+                resetResultArea();
+            }
+        }
+
+        /**
+         * 添削結果エリアをリセット
+         */
+        function resetResultArea() {
+            feedbackContainer.classList.add('hidden');
+            feedbackText.innerHTML = "";
+            errorMessage.classList.add('hidden');
+            errorMessage.textContent = "";
+        }
+        
+        /**
+         * 添削ボタンが押された時の処理
+         */
+        async function handleSubmit() {
+            const userText = userTranslation.value.trim();
+            if (userText === "") {
+                errorMessage.textContent = "和訳を入力してください。";
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            // UIをローディング状態にする
+            resetResultArea();
+            loadingSpinner.classList.remove('hidden');
+            submitBtn.disabled = true;
+            btnText.textContent = "AIが添削中...";
+
+            // 必要なデータを取得
+            const selectedId = parseInt(problemSelect.value);
+            const selectedProblem = problems.find(p => p.id === selectedId);
+            
+            try {
+                // AIに添削を依頼 (GAS経由)
+                const feedback = await callProxyAPI(selectedProblem.english, userText, selectedProblem.modelTranslation);
+                
+                // 結果を表示
+                displayFeedback(feedback);
+
+            } catch (error) {
+                // エラー処理
+                errorMessage.textContent = `エラーが発生しました: ${error.message}`;
+                errorMessage.classList.remove('hidden');
+            } finally {
+                // UIを元に戻す
+                loadingSpinner.classList.add('hidden');
+                submitBtn.disabled = false;
+                btnText.textContent = "AIに添削してもらう";
+            }
+        }
+
+        /**
+         * 添削結果をHTMLに変換して表示
+         */
+        function displayFeedback(markdownText) {
+            // Markdown -> HTML 変換
+            // 添削結果をサニタイズ（簡易）し、MarkdownをHTMLに変換
+            if (!markdownText) {
+                feedbackText.innerHTML = "添削結果がありませんでした。";
+                feedbackContainer.classList.remove('hidden');
+                return;
+            }
+
+            // 危険なHTMLタグを簡易的に無効化 (XSS対策)
+            let safeText = markdownText
+                .replace(/&/g, "&amp;") // & を先に
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+
+            let html = safeText
+                // h3
+                .replace(/^### (.*)$/gm, '<h3 class="text-2xl font-semibold mt-6 mb-2 pb-1 border-b-2">$1</h3>')
+                // h4
+                .replace(/^#### (.*)$/gm, '<h4 class="text-xl font-semibold mt-4 mb-1">$1</h4>')
+                // **bold**
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                // * list item
+                .replace(/^\* (.*)$/gm, '<li>$1</li>');
+
+            // <li> を <ul> で囲む
+            // 複数のリストブロックに対応
+            html = html.replace(/<li>(.*?)<\/li>(?!<li>)/g, '<li>$1</li></ul>');
+            html = html.replace(/<li>/g, '<ul><li>');
+            html = html.replace(/<\/ul>\s*<ul>/g, ''); // 連続するリストをマージ
+            
+            // 改行を <br> に
+            html = html.replace(/\n/g, '<br>');
+
+            // リストタグ内の不要な <br> を調整
+            html = html.replace(/<br>\s*<\/ul>/g, '</ul>');
+            html = html.replace(/<\/ul><br>/g, '</ul>');
+            html = html.replace(/<ul><br>/g, '<ul>');
+            html = html.replace(/<li><br>/g, '<li>');
+            html = html.replace(/<br><li>/g, '<li>');
+            html = html.replace(/<br><h3/g, '<h3');
+            html = html.replace(/<br><h4/g, '<h4');
+
+
+            // &lt; と &gt; を元に戻す（許可されたタグのみ）
+            // この簡易HTML変換では、サニタイズでエスケープされた文字を元に戻す必要はない
+            // h3, h4, ul, li, strong は上記でHTMLタグに変換されているため
+
+            feedbackText.innerHTML = html;
+            feedbackContainer.classList.remove('hidden');
+        }
+
+
+        // --- 5. イベントリスナーの登録 ---
+        document.addEventListener('DOMContentLoaded', initializeProblems);
+        problemSelect.addEventListener('change', displayProblem);
+        submitBtn.addEventListener('click', handleSubmit);
+
+    </script>
+</body>
+</html>
